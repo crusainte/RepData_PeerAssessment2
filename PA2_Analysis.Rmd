@@ -1,0 +1,80 @@
+---
+title: "Analysis of Weather Events impacting Health and Economy in US"
+author: "Yang Yuzhong"
+date: "3/16/2015"
+output: html_document
+---
+
+## Synopsis
+
+## Data Used for Analysis
+In our analysis report, we will be using the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file from the course web site:
+
+- [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) [47Mb]
+
+There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
+
+- National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+
+- National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
+
+## Questions to answer
+Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+Across the United States, which types of events have the greatest economic consequences?
+
+## Data Processing
+```{r calllibraries}
+library(lubridate)
+library(dplyr)
+```
+
+The dataset is read in and all headers converted to lowercase with `tolower()`
+and `names()`. Next, `strptime()` and `format()` is performed on _bgn_date_ 
+to extract the year for each entry in the dataset. _year_ column is then added
+to the original dataset.
+```{r readcsv}
+#data<-read.csv("repdata_data_StormData.csv")
+#names(data)<-tolower(names(data))
+#datecol<-strptime(data$bgn_date, "%m/%d/%Y %H:%M:%S", tz="UTC")
+#datecol<-format(datecol, "%Y")
+
+#data<-mutate(data,year=datecol)
+```
+
+Following this, _datayear_
+was created to hold the count of records for each year in the dataset.
+Based on information from 
+[Details of Storm Events](http://www.ncdc.noaa.gov/stormevents/details.jsp),
+years earlier than 1996 were filtered from the dataset with `%in%` operator so 
+that we perform analysis on years that have the most holistic types of 
+weather events.
+```{r filteryear}
+#datayear<-data %>%
+#    group_by(year) %>%
+#    summarize(entries = length(evtype))
+
+#datayear<-datayear[datayear$year>1995,]
+
+#data<-filter(data,data$year %in% datayear$year)
+```
+
+Next, we further filter the massive dataset down to those that are
+the harmful and have economical consequences. This would mean that filtered
+records should have 0 in all 4 (_fatalities_,_injuries_,_propdmg_,_cropdmg_) 
+columns.
+
+```{r filterimpactfuls}
+#data<-filter(data,fatalities != 0 | injuries != 0 | 
+#                 propdmg != 0 | cropdmg != 0)
+```
+
+In order to map the filtered data to 48 event types defined in 
+[Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf),
+we perform the following `gsub()` and `grep()` and tag it to a new column.
+
+## Results
