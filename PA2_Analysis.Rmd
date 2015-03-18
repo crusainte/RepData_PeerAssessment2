@@ -1,57 +1,69 @@
 ---
-title: "Analysis of Weather Events impacting Health and Economy in US"
+title: "Analysis of Weather Events impacting Health and Economy in USA"
 author: "Yang Yuzhong"
-date: "3/16/2015"
+date: "3/18/2015"
 output: html_document
 ---
 
 ## Synopsis
+This report outlines the analysis done to determine the impact of various 
+weather events on the economy and health of United States. The data used in 
+this report is based on the 1950 - 2011 storm database collected from 
+U.S. National Oceanic and Atmospheric Administration’s (NOAA). 
 
-## Data Used for Analysis
-In our analysis report, we will be using the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+Due to fewer events recorded for years earlier than 1996, the analysis
+was only performed on years between 1996-2011. The metrics for determining 
+weather event impacts are `Fatalities` and `Injuries` for health impact and 
+`Property Damage` and `Crop Damage` for economic impact.
 
-The data for this assignment come in the form of a comma-separated-value file compressed via the bzip2 algorithm to reduce its size. You can download the file from the course web site:
-
-- [Storm Data](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2) [47Mb]
-
-There is also some documentation of the database available. Here you will find how some of the variables are constructed/defined.
-
-- National Weather Service [Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
-
-- National Climatic Data Center Storm Events [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
-
-The events in the database start in the year 1950 and end in November 2011. In the earlier years of the database there are generally fewer events recorded, most likely due to a lack of good records. More recent years should be considered more complete.
-
-## Questions to answer
-Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
-
-Across the United States, which types of events have the greatest economic consequences?
+The analysis results has shown that *Tornado* caused the highest number of 
+casualties and *Flood* caused the highest economic damage to United States 
+between 1996-2011. Also, *Flood* related events are highly ranked in terms 
+of impact to United States' health and economy.
 
 ## Data Processing
+### Setting Up of Dataset and Environment
 ```{r calllibraries}
+library(R.utils)
+library(ggplot2)
 library(dplyr)
 ```
 
+```{r downloadfile}
+setwd("~/workspace//Reproducible Research/RepData_PeerAssessment2/")
+
+if (!"repdata_data_StormData.csv.bz2" %in% dir()) {
+    download.file("http://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2", 
+        destfile = "repdata_data_StormData.csv.bz2")
+    bunzip2("repdata_data_StormData.csv.bz2", overwrite=T, remove=F)
+}
+
+if ("repdata_data_StormData.csv" %in% dir()) {
+    data<-read.csv("repdata_data_StormData.csv")
+    names(data)<-tolower(names(data))
+}
+```
+
+### Filtering the Dataset
 The dataset is read in and all headers converted to lowercase with `tolower()`
 and `names()`. Next, `strptime()` and `format()` is performed on _bgn_date_ 
 to extract the year for each entry in the dataset. _year_ column is then added
 to the original dataset.
-```{r readcsv}
-data<-read.csv("repdata_data_StormData.csv")
-names(data)<-tolower(names(data))
+
+```{r formatyear}
 datecol<-strptime(data$bgn_date, "%m/%d/%Y %H:%M:%S", tz="UTC")
 datecol<-format(datecol, "%Y")
 
 data<-mutate(data,year=datecol)
 ```
 
-Following this, _datayear_
-was created to hold the count of records for each year in the dataset.
-Based on information from 
+Following this, _datayear_ was created to hold the count of records for each 
+year in the dataset.Based on information from 
 [Details of Storm Events](http://www.ncdc.noaa.gov/stormevents/details.jsp),
 years earlier than 1996 were filtered from the dataset with `%in%` operator so 
 that we perform analysis on years that have the most holistic types of 
 weather events.
+
 ```{r filteryear}
 datayear<-data %>%
     group_by(year) %>%
@@ -62,35 +74,171 @@ datayear<-datayear[datayear$year>1995,]
 data<-filter(data,data$year %in% datayear$year)
 ```
 
-Next, we further filter the massive dataset down to those that are
-the harmful and have economical consequences. This would mean that filtered
-records should have 0 in all 4 (_fatalities_,_injuries_,_propdmg_,_cropdmg_) 
-columns.
+Lastly, events without any fatalities, injuries, crop and property dmg are
+removed as they are not required to answer the questions for the analysis.
+
+```{r filternoimpact}
+data<-filter(data,fatalities != 0 | injuries != 0 | propdmg != 0 | cropdmg != 0)
+```
+
+### Determining health impact for each record
+To determine health impact by event type, a new column _totaldamage_ that is 
+the sum of fatalities and injuries from event is added to the dataset using 
+`mutate()`.
 
 ```{r sumhealth}
-fatalities<- data %>%
-    group_by(evtype) %>%
-    summarize(fatalcount=sum(fatalities))
-
-injuries<- data %>%
-    group_by(evtype) %>%
-    summarize(injurecount=sum(injuries))
-
-healthimpact<-merge(fatalities,injuries,by="evtype")
-
-healthimpact<- healthimpact %>%
-    mutate(totalimpact=healthimpact$fatalcount + healthimpact$injurecount) %>%
-    select(evtype,totalimpact) %>%
-    arrange(desc(totalimpact))
+data<-data %>%
+    mutate(totalimpact=(data$fatalities + data$injuries))
 ```
+
+### Determining economic impact for each record
+To determine economic impact by event type, the true value of crop damage,
+derived from _cropdmg_ and _cropdmgexp_ containing the exponential multplier. 
+This is the same for property damage with _propdmg_ and _propdmgexp_. Then the
+total economic impact is obtained by the sum of crop and property damage.
+
+To do this, codebook from
+[Investigative Reporters & Editors - Record Layout](http://ire.org/media/uploads/files/datalibrary/samplefiles/Storm%20Events/layout08.doc) were used for the character symbols in 
+_cropdmgexp_ and _propdmgexp_, were used to convert them into numeric format.
+
+```{r subdmg}
+data$cropdmgexp<-tolower(as.character(data$cropdmgexp))
+data$cropdmgexp[data$cropdmgexp == "b"]<-"9"
+data$cropdmgexp[data$cropdmgexp == "m"]<-"6"
+data$cropdmgexp[data$cropdmgexp == "k"]<-"3"
+data$cropdmgexp[data$cropdmgexp == "h"]<-"2"
+data$cropdmgexp[data$cropdmgexp == ""]<-"0"
+data$cropdmgexp[is.na(data$cropdmgexp)]<-"0"
+data$cropdmgexp<-as.numeric(data$cropdmgexp)
+
+data$propdmgexp<-tolower(as.character(data$propdmgexp))
+data$propdmgexp[data$propdmgexp == "b"]<-"9"
+data$propdmgexp[data$propdmgexp == "m"]<-"6"
+data$propdmgexp[data$propdmgexp == "k"]<-"3"
+data$propdmgexp[data$propdmgexp == "h"]<-"2"
+data$propdmgexp[data$propdmgexp == ""]<-"0"
+data$propdmgexp[is.na(data$propdmgexp)]<-"0"
+data$propdmgexp<-as.numeric(data$propdmgexp)
+```
+
+After the conversion, a new column _totaldamage_ that is the sum of crop and
+property damage is added to the dataset using `mutate()`.
 
 ```{r sumdmg}
-
+data<-data %>%
+    mutate(totaldamage=(data$cropdmg * 10^data$cropdmgexp) + 
+               (data$propdmg * 10^data$propdmgexp))
 ```
 
-In order to map the filtered data to 48 event types defined in 
-[Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf),
-we perform the following `gsub()` and `grep()` and tag it to a new column.
+### Merging Similar Event types
+As the event types given in the dataset are too inconsistently named and manual 
+merging of the event types into one of the 48 event types reflected in
+[Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+would be too tedious, a partial merging of similar event types that have high
+health and economic impact is performed.
 
+Firstly, to determine the event types to merge, _healthimpact_ and 
+_economicimpact_ are created by summing up _totalimpact_ and _totaldamage_
+columns respectively then arranged in descending order. This helps in
+determining the top 20 high health and economic impact event types to perform
+merging to reduce the scope of merging similar event types.
+
+```{r topimpacts}
+tophealth<- data %>%
+    group_by(evtype) %>%
+    summarize(totalimpact=sum(totalimpact)) %>%
+    arrange(desc(totalimpact))
+
+head(tophealth,n=20)
+
+topeconomic<-data %>%
+    group_by(evtype) %>%
+    summarize(totaldamage=sum(totaldamage)) %>%
+    arrange(desc(totaldamage))
+
+head(topeconomic,n=20)
+```
+
+With the information on the top 20 health and economic impact event types,
+similar event types were merged under one label using `grep()`.
+
+```{r evtypeclassification}
+data$evtype<-as.character(data$evtype)
+data$evtype[grep("non.tstm",data$evtype,ignore.case=TRUE)]<-"STRONG WIND"
+data$evtype[grep("thunderstorm|tstm",data$evtype,ignore.case=TRUE)]<-"THUNDERSTORM"
+data$evtype[grep("wind",data$evtype,ignore.case=TRUE)]<-"STRONG WIND"
+data$evtype[grep("^strong.wind|gusty.wind|^high.wind|^wind",
+                 data$evtype,ignore.case=TRUE)]<-"STRONG WIND"
+data$evtype[grep("flash flood",data$evtype,ignore.case=TRUE)]<-"FLASH FLOOD"
+data$evtype[grep("^coastal flood|tidal flood|flooding/erosion",
+                 data$evtype,ignore.case=TRUE)]<-"COASTAL FLOOD"
+data$evtype[grep("flood",data$evtype,ignore.case=TRUE)]<-"FLOOD"
+data$evtype[grep("rip",data$evtype,ignore.case=TRUE)]<-"RIP CURRENT"
+data$evtype[grep("heat",data$evtype,ignore.case=TRUE)]<-"HEAT"
+data$evtype[grep("fire",data$evtype,ignore.case=TRUE)]<-"WILDFIRE"
+data$evtype[grep("freeze|cold",data$evtype,ignore.case=TRUE)]<-"COLD"
+data$evtype[grep("surge",data$evtype,ignore.case=TRUE)]<-"STORM SURGE"
+data$evtype[grep("hail",data$evtype,ignore.case=TRUE)]<-"HAIL"
+```
+
+After the merging of similar event types, _healthimpact_ and _economicimpact_
+is created by summing of _totalimpact_ and _totaldamage_ columns respectively
+then arranged in descending order.
+
+```{r finalimpacts}
+healthimpact<- data %>%
+    group_by(evtype) %>%
+    summarize(totalimpact=sum(totalimpact)) %>%
+    arrange(desc(totalimpact))
+
+economicimpact<-data %>%
+    group_by(evtype) %>%
+    summarize(totaldamage=sum(totaldamage)/10^6) %>%
+    arrange(desc(totaldamage))
+```
 
 ## Results
+After preprocessing the data, analysis are performed to determine weather 
+events types that are most harmful w.r.t Population Health and had the
+greatest economic impact.
+
+### Events Most Harmful with Respect to Population Health
+```{r healthplot}
+healthdata<-healthimpact[1:10,]
+healthdata$evtype<-factor(healthdata$evtype,
+                          level = as.character(healthdata$evtype))
+healthplot <- ggplot(data = healthdata, aes(x = evtype, y = totalimpact)) +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+    geom_bar(stat="identity") +
+    ggtitle("Most Harmful Weather Event Types in USA (1996-2011)") +
+    xlab("Weather Event Type") +
+    ylab("No. of Casualties")
+healthplot
+```
+
+From the health impact barplot, *Tornado* caused the highest number of 
+casualties between 1996-2011. This is almost double that of *Flood* and *Heat* 
+related weather events.
+
+### Events with Greatest Economic Consequences
+```{r econplot}
+econdata<-economicimpact[1:10,]
+econdata$evtype<-factor(econdata$evtype, 
+                        level = as.character(econdata$evtype))
+econplot<- ggplot(data = econdata, aes(x = evtype, y = totaldamage)) +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+    geom_bar(stat="identity") +
+    ggtitle("Costliest Weather Event Types in USA (1996-2011)") +
+    xlab("Weather Event Type") +
+    ylab("Property/Crop Damage (in $USD Millions)")
+econplot
+```
+
+From the economic impact barplot, *Flood* caused the largest Property and Crop
+related damage. This is almost triple that of *Hurricane* and *Storm Surge* 
+related weather events.
+
+### Conclusion
+*Flood* related weather events rank highly in terms of economic impact and 
+number of casualty. *Tornado* is 4th in terms of property/crop damage although 
+it causes the highest number of casualties.
